@@ -1,5 +1,0 @@
-hardhat:
-  fork:
-    ethereum:
-      mainnet:
-        upstream_provider: infura
