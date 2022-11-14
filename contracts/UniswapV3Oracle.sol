@@ -28,10 +28,14 @@ contract UniswapV3Oracle {
 
         (int56[] memory tickCumulatives,) = IUniswapV3Pool(pool).observe(secondsAgos);
 
-        return priceFromTick(zeroToOne, SCALE, tickCumulatives);
+        return _getPriceFromTick(zeroToOne, SCALE, tickCumulatives);
     }
 
-    function priceFromTick(bool zeroToOne, uint256 scale, int56[] memory tickCumulatives) public view returns (uint256) {
+    function _getPriceFromTick(bool zeroToOne, uint256 scale, int56[] memory tickCumulatives)
+        internal
+        view
+        returns (uint256)
+    {
         int56 anchorPeriodI = int56(uint56(anchorPeriod));
         int56 timeWeightedAverageTickS56 = (tickCumulatives[1] - tickCumulatives[0]) / anchorPeriodI;
 
