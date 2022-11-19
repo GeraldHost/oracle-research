@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity >=0.5.0 <0.8.0;
 
-// USDC/ETH: 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640
-// DAI/ETH: 0x60594a405d53811d3BC4766596EFD80fd545A270
-
 import {FullMath} from "./lib/FullMath.sol";
 import {TickMath} from "./lib/TickMath.sol";
 
