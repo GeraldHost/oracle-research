@@ -20,16 +20,18 @@ contract UniswapV3Oracle {
     INonfungiblePositionManager internal NFT = INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
 
     function getTokens(uint256 positionId) external view returns (address, address) {
-        (,, address token0, address token1,,,,,,,,) = NFT.positions(positionId);
+        (, , address token0, address token1, , , , , , , , ) = NFT.positions(positionId);
         return (token0, token1);
     }
 
     function getAmounts(uint256 positionId) external view returns (uint256, uint256) {
-        (,, address token0, address token1, uint24 fee,,,,,,,) = NFT.positions(positionId);
-        address pool =
-            PoolAddress.computeAddress(NFT.factory(), PoolAddress.PoolKey({token0: token0, token1: token1, fee: fee}));
+        (, , address token0, address token1, uint24 fee, , , , , , , ) = NFT.positions(positionId);
+        address pool = PoolAddress.computeAddress(
+            NFT.factory(),
+            PoolAddress.PoolKey({token0: token0, token1: token1, fee: fee})
+        );
 
-        (uint160 sqrtRatioX96,,,,,,) = IUniswapV3Pool(pool).slot0();
+        (uint160 sqrtRatioX96, , , , , , ) = IUniswapV3Pool(pool).slot0();
         return NFT.total(positionId, sqrtRatioX96);
     }
 
@@ -37,16 +39,16 @@ contract UniswapV3Oracle {
         uint32[] memory secondsAgos = new uint32[](2);
         secondsAgos[0] = anchorPeriod;
 
-        (int56[] memory tickCumulatives,) = IUniswapV3Pool(pool).observe(secondsAgos);
+        (int56[] memory tickCumulatives, ) = IUniswapV3Pool(pool).observe(secondsAgos);
 
         return _getPriceFromTick(zeroToOne, SCALE, tickCumulatives);
     }
 
-    function _getPriceFromTick(bool zeroToOne, uint256 scale, int56[] memory tickCumulatives)
-        internal
-        view
-        returns (uint256)
-    {
+    function _getPriceFromTick(
+        bool zeroToOne,
+        uint256 scale,
+        int56[] memory tickCumulatives
+    ) internal view returns (uint256) {
         int56 anchorPeriodI = int56(uint56(anchorPeriod));
         int56 timeWeightedAverageTickS56 = (tickCumulatives[1] - tickCumulatives[0]) / anchorPeriodI;
 
