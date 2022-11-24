@@ -4,6 +4,13 @@ from math import floor
 
 # pid: 372817
 
+"""
+you can get the value of the position at the lower tick
+which would be the lowest amount this position can hold?
+so if you borrow a similar underlying asset eg WETH:DAI
+if ETH moves againts you should be able to understand what is
+the lowest amount of collat you could end up with?
+"""
 
 def main():
     priority_fee("2 gwei")
