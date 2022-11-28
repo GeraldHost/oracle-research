@@ -33,4 +33,7 @@ def main():
     oracle = Oracle.deploy({"from": acct})
 
     # print(oracle.getTokenPrice("0x60594a405d53811d3BC4766596EFD80fd545A270", False))
-    print("Price:", oracle.getPrice(374724))
+    #print("Price:", oracle.getPrice(7177))
+    #print("Price:", oracle.getPrice(375246))
+    print("Price:", oracle.getPrice(375248))
+    #print("Price:", oracle.getPrice(1023286666))

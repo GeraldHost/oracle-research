@@ -52,16 +52,43 @@ contract Oracle {
     /// +-------------------------------------------------------------------------
 
     /// @dev Get USD price of position
-    function getPrice(uint256 positionId) external view returns (uint256, uint256, uint256) {
+    function getPrice(uint256 positionId) external view returns (uint256[] memory) {
         address pool = _poolFromPositionId(positionId);
 
-        (uint160 sqrtRatioX96, , , , , , ) = IUniswapV3Pool(pool).slot0();
-        (, , , , , int24 tickLower, int24 tickUpper, uint128 liquidity, , , , ) = positionManager.positions(positionId);
-        (uint256 amount0, uint256 amount1) = positionManager.total(positionId, sqrtRatioX96);
+        (uint160 sqrtRatioX96, int24 tick, , , , , ) = IUniswapV3Pool(pool).slot0();
 
-        uint256 virtualTokenAmount = _getVirtualToken0Amount(sqrtRatioX96, tickLower, tickUpper, amount0, liquidity);
+        (uint256 amount0, uint256 amount1) = positionManager.principal(positionId, sqrtRatioX96);
 
-        return (amount0, amount1, virtualTokenAmount);
+        uint256[] memory ret = new uint256[](10);
+
+        {
+            // Price of USDC in ETH
+            uint160 sqrtRatioX96 = TickMath.getSqrtRatioAtTick(tick);
+            uint256 twapX96 = FullMath.mulDiv(sqrtRatioX96, sqrtRatioX96, FixedPoint96.Q96);
+            ret[0] = FullMath.mulDiv(1e6, twapX96, FixedPoint96.Q96);
+        }
+
+        {
+            // Price of ETH in USDC
+            uint160 sqrtRatioX96 = TickMath.getSqrtRatioAtTick(-tick);
+            uint256 twapX96 = FullMath.mulDiv(sqrtRatioX96, sqrtRatioX96, FixedPoint96.Q96);
+            ret[1] = FullMath.mulDiv(1e18, twapX96, FixedPoint96.Q96);
+        }
+
+        {
+            // amounts 
+            ret[2] = amount0;
+            ret[3] = amount1;
+        }
+
+        {
+            // v amounts 
+            ret[4] = amount1 * ret[1] / 1e18;
+            ret[5] = ret[4] + amount0;
+        }
+
+
+        return ret;
     }
 
     /// +-------------------------------------------------------------------------
@@ -82,7 +109,7 @@ contract Oracle {
 
         uint128 liq0 = LiquidityAmounts.getLiquidityForAmount0(sqrtRatioAX96, sqrtRatioBX96, amount0);
 
-        return amount0 * liquidity / liq0; 
+        return (amount0 * liquidity) / liq0;
     }
 
     /// @dev Get USD price of token
