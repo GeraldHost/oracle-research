@@ -36,6 +36,9 @@ contract Oracle {
     /// @dev price anchor period for getting the TWAP
     uint32 public constant anchorPeriod = 30 minutes;
 
+    /// @dev basis points for anchor hi-lo
+    uint256 public constant anchorGrace = 100; // 1%
+
     /// @dev WAD 10 ** 18
     uint256 public constant WAD = 1e18;
 
@@ -66,7 +69,10 @@ contract Oracle {
         uint256 token1Price = _getToken1Price();
 
         uint256 anchorPrice = _getAnchorPrice();
-        // TODO: check anchor
+        uint256 anchorPriceDelta = (anchorPrice * anchorGrace) / 10000;
+        uint256 anchorPriceLo = anchorPrice - anchorPriceDelta;
+        uint256 anchorPriceHi = anchorPrice + anchorPriceDelta;
+        require(token0Price < anchorPriceHi && token0Price > anchorPriceLo, "!anchor");
 
         return ((amount0 * token0Price) / WAD) + ((amount1 * token1Price) / WAD);
     }
