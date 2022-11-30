@@ -30,10 +30,19 @@ def main():
     priority_fee("2 gwei")
     acct = accounts.load("anvil")
     # oracle = UniswapV3Oracle.deploy({"from": acct})
-    oracle = Oracle.deploy({"from": acct})
+    
+    # eth:dai
+    pool = "0xc2e9f25be6257c210d7adf0d4cd6e3e881ba25f8"
+    # dai:oracle
+    token0Oracle = "0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9"
+    # eth:oracle
+    token1Oracle = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
+
+    oracle = Oracle.deploy(token0Oracle, token1Oracle, pool, {"from": acct})
 
     # print(oracle.getTokenPrice("0x60594a405d53811d3BC4766596EFD80fd545A270", False))
     #print("Price:", oracle.getPrice(7177))
     #print("Price:", oracle.getPrice(375246))
-    print("Price:", oracle.getPrice(375248))
+    print("(_getToken0Price(), _getToken1Price(), _getPoolPrice(), _getAnchorPrice())")
+    print(oracle.getPrice(375246))
     #print("Price:", oracle.getPrice(1023286666))

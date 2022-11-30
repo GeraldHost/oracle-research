@@ -12,29 +12,9 @@ import {INonfungiblePositionManager} from "@uniswap/v3-periphery/contracts/inter
 
 interface IChainlinkOracle {
     function latestAnswer() external view returns (uint256);
+
+    function decimals() external view returns (uint256);
 }
-
-/**
-
-amount0    amount1
-liquid0    liquid1
-
-example:   1ETH = 1200DAI
-amounts:   1, 1200
-liquid:    1000, 1000
-vamounts:  2, 2400
-
-x * 1000 / 2000 = 1
-x = 1 / (1000 / 2000)
-x = 2 
-
-2000x * 1000 = 1 * 2000
-
-1 * 2000 / 1000 = 2000x
-
-
-1 / (32/156)
-**/
 
 contract Oracle {
     using PositionValue for INonfungiblePositionManager;
@@ -44,76 +24,100 @@ contract Oracle {
     /// +-------------------------------------------------------------------------
 
     /// @dev The Uniswap NFT contract
-    INonfungiblePositionManager internal positionManager =
+    INonfungiblePositionManager internal constant positionManager =
         INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
+
+    /// @dev token0 chainlink USD price feed
+    address public immutable token0Oracle;
+
+    /// @dev token1 chainlink USD price feed
+    address public immutable token1Oracle;
+
+    /// @dev price anchor period for getting the TWAP
+    uint32 public constant anchorPeriod = 30 minutes;
+
+    /// @dev WAD 10 ** 18
+    uint256 public constant WAD = 1e18;
+
+    /// @dev Uniswap V3 pool
+    address public immutable pool;
+
+    /// +-------------------------------------------------------------------------
+    /// | Constructor
+    /// +-------------------------------------------------------------------------
+
+    constructor(address _token0Oracle, address _token1Oracle, address _pool) {
+        token0Oracle = _token0Oracle;
+        token1Oracle = _token1Oracle;
+        pool = _pool;
+    }
 
     /// +-------------------------------------------------------------------------
     /// | Core
     /// +-------------------------------------------------------------------------
 
-    /// @dev Get USD price of position
-    function getPrice(uint256 positionId) external view returns (uint256[] memory) {
-        address pool = _poolFromPositionId(positionId);
+    function getPrice(uint256 positionId) external view returns (uint256) {
+        require(_poolFromPositionId(positionId) == pool, "!pool");
 
         (uint160 sqrtRatioX96, int24 tick, , , , , ) = IUniswapV3Pool(pool).slot0();
-
         (uint256 amount0, uint256 amount1) = positionManager.principal(positionId, sqrtRatioX96);
 
-        uint256[] memory ret = new uint256[](10);
+        uint256 token0Price = _getToken0Price();
+        uint256 token1Price = _getToken1Price();
 
-        {
-            // Price of USDC in ETH
-            uint160 sqrtRatioX96 = TickMath.getSqrtRatioAtTick(tick);
-            uint256 twapX96 = FullMath.mulDiv(sqrtRatioX96, sqrtRatioX96, FixedPoint96.Q96);
-            ret[0] = FullMath.mulDiv(1e6, twapX96, FixedPoint96.Q96);
-        }
+        uint256 anchorPrice = _getAnchorPrice();
+        // TODO: check anchor
 
-        {
-            // Price of ETH in USDC
-            uint160 sqrtRatioX96 = TickMath.getSqrtRatioAtTick(-tick);
-            uint256 twapX96 = FullMath.mulDiv(sqrtRatioX96, sqrtRatioX96, FixedPoint96.Q96);
-            ret[1] = FullMath.mulDiv(1e18, twapX96, FixedPoint96.Q96);
-        }
-
-        {
-            // amounts 
-            ret[2] = amount0;
-            ret[3] = amount1;
-        }
-
-        {
-            // v amounts 
-            ret[4] = amount1 * ret[1] / 1e18;
-            ret[5] = ret[4] + amount0;
-        }
-
-
-        return ret;
+        return ((amount0 * token0Price) / WAD) + ((amount1 * token1Price) / WAD);
     }
 
     /// +-------------------------------------------------------------------------
-    /// | Internals
+    /// | Internals:Chainlink
     /// +-------------------------------------------------------------------------
 
-    /// @dev Get virtual amount of tokens if priced in the single
-    ///      asset that has the CL oracle price
-    function _getVirtualToken0Amount(
-        uint160 sqrtRatioX96,
-        int24 tickLower,
-        int24 tickUpper,
-        uint256 amount0,
-        uint128 liquidity
-    ) internal view returns (uint256) {
-        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
-        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
-
-        uint128 liq0 = LiquidityAmounts.getLiquidityForAmount0(sqrtRatioAX96, sqrtRatioBX96, amount0);
-
-        return (amount0 * liquidity) / liq0;
+    function _getToken0Price() internal view returns (uint256) {
+        return _getTokenPrice(token0Oracle);
     }
 
-    /// @dev Get USD price of token
-    function _getTokenPrice(address token) internal view returns (uint256) {}
+    function _getToken1Price() internal view returns (uint256) {
+        return _getTokenPrice(token1Oracle);
+    }
+
+    function _getTokenPrice(address oracle) internal view returns (uint256) {
+        uint256 decimals = IChainlinkOracle(oracle).decimals();
+        uint256 answer = IChainlinkOracle(oracle).latestAnswer();
+        return answer * (10 ** (18 - decimals));
+    }
+
+    /// +-------------------------------------------------------------------------
+    /// | Internals:Anchors
+    /// +-------------------------------------------------------------------------
+
+    function _getPoolPrice() internal view returns (uint256) {
+        uint32[] memory secondsAgos = new uint32[](2);
+        secondsAgos[0] = anchorPeriod;
+
+        (int56[] memory tickCumulatives, ) = IUniswapV3Pool(pool).observe(secondsAgos);
+
+        int56 anchorPeriodI = int56(uint56(anchorPeriod));
+        int56 timeWeightedAverageTickS56 = (tickCumulatives[1] - tickCumulatives[0]) / anchorPeriodI;
+        int24 timeWeightedAverageTick = int24(timeWeightedAverageTickS56);
+
+        uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(timeWeightedAverageTick);
+        uint256 twapX96 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, FixedPoint96.Q96);
+
+        return FullMath.mulDiv(WAD, twapX96, FixedPoint96.Q96);
+    }
+
+    function _getAnchorPrice() internal view returns (uint256) {
+        uint256 poolPrice = _getPoolPrice();
+        uint256 tokenPrice = _getToken1Price();
+        return (poolPrice * tokenPrice) / WAD;
+    }
+
+    /// +-------------------------------------------------------------------------
+    /// | Internals:Helpers
+    /// +-------------------------------------------------------------------------
 
     /// @dev Get the pool address from position ID
     /// @param positionId The position ID
